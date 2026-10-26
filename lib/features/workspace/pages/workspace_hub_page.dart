@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'story_media_page.dart';
+import 'story_editor_page.dart';
+import 'codex_editor_page.dart';
+import 'picme_studio_page.dart';
 
 /// A ChatGPT-Projects-style hub with three sections: Katha, Codex, Picme.
 ///
@@ -239,13 +242,18 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
                                   if (_section == 0) {
                                     Navigator.of(context).push(
                                       MaterialPageRoute<void>(
-                                        builder: (_) => StoryMediaPage(
-                                          storyId: it['id'] ?? (it['name'] ?? 'untitled'),
-                                          storyTitle: it['name'] ?? 'Untitled',
-                                          subtitle: it['meta'] ?? 'Story',
-                                          words: 0,
-                                          startChapter: 1,
-                                        ),
+                                        builder: (_) {
+                                          final String sid = it['id'] ?? (it['name'] ?? 'untitled');
+                                          final String name = it['name'] ?? 'Untitled';
+                                          if (_section == 0) {
+                                            return StoryEditorPage(
+                                                storyId: sid, storyTitle: name, chapter: 1);
+                                          }
+                                          if (_section == 1) {
+                                            return CodexEditorPage(projectId: sid, title: name);
+                                          }
+                                          return PicmeStudioPage(projectId: sid, title: name);
+                                        },
                                       ),
                                     );
                                   }
