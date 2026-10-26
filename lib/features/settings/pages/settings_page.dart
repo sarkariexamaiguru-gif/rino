@@ -26,6 +26,8 @@ import '../../backup/pages/backup_page.dart';
 import '../../quick_phrase/pages/quick_phrases_page.dart';
 import '../../instruction_injection/pages/instruction_injection_page.dart';
 import '../../world_book/pages/world_book_page.dart';
+import '../../model/pages/local_models_page.dart';
+import '../../workspace/pages/workspace_hub_page.dart';
 import '../../../shared/widgets/section_card.dart';
 import 'network_proxy_page.dart';
 import 'phone_control_settings_page.dart';
@@ -316,6 +318,29 @@ class SettingsPage extends StatelessWidget {
                 },
               ),
               _iosDivider(context),
+              _iosNavRow(
+                context,
+                icon: Lucide.Download,
+                label: 'Local models',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const LocalModelsPage()),
+                  );
+                },
+              ),
+              _iosDivider(context),
+              _iosNavRow(
+                context,
+                icon: Lucide.LayoutGrid,
+                label: 'Katha / Codex / Picme',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const WorkspaceHubPage()),
+                  );
+                },
+              ),
+              _iosDivider(context),
+
               _iosNavRow(
                 context,
                 icon: Lucide.Brain,
