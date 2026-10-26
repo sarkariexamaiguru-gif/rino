@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'story_media_page.dart';
+
 /// A ChatGPT-Projects-style hub with three sections: Katha, Codex, Picme.
 ///
 /// Katha  - stories: title, last edited, word count. Opens the writing flow.
@@ -33,7 +35,14 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
   final Map<int, List<Map<String, String>>> _items = <int, List<Map<String, String>>>{};
 
   bool _loading = true;
-  String _filter = 'all'; // all | mine | shared
+  String _filter = 'all'; // 'all' | 'a' | 'b'
+
+  /// Filters that actually mean something per section.
+  static const Map<int, List<List<String>>> _filterSets = <int, List<List<String>>>{
+    0: <List<String>>[<String>['all', 'All'], <String>['a', 'In progress'], <String>['b', 'Finished']],
+    1: <List<String>>[<String>['all', 'All'], <String>['a', 'Snippets'], <String>['b', 'Files']],
+    2: <List<String>>[<String>['all', 'All'], <String>['a', 'Prompts'], <String>['b', 'References']],
+  };
 
   @override
   void initState() {
@@ -107,6 +116,7 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
           'name': trimmed,
           'updated': _now(),
           'owner': 'mine',
+          'tag': 'a',
           'meta': _section == 0 ? '0 words' : (_section == 1 ? 'code' : 'image project'),
         },
         ...(_items[_section] ?? <Map<String, String>>[]),
@@ -149,8 +159,7 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
   List<Map<String, String>> get _visible {
     final String q = _search.text.trim().toLowerCase();
     return (_items[_section] ?? <Map<String, String>>[]).where((Map<String, String> it) {
-      if (_filter == 'mine' && it['owner'] != 'mine') return false;
-      if (_filter == 'shared' && it['owner'] != 'shared') return false;
+      if (_filter != 'all' && it['tag'] != _filter) return false;
       if (q.isEmpty) return true;
       return (it['name'] ?? '').toLowerCase().contains(q);
     }).toList();
@@ -202,11 +211,9 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    children: <Widget>[
-                      _chip('All', 'all'),
-                      _chip('Created by you', 'mine'),
-                      _chip('Shared with you', 'shared'),
-                    ],
+                    children: (_filterSets[_section] ?? <List<String>>[])
+                        .map((List<String> f) => _chip(f[1], f[0]))
+                        .toList(),
                   ),
                 ),
                 Expanded(
@@ -227,6 +234,21 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: ListTile(
+                                onTap: () {
+                                  if (_section == 0) {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) => StoryMediaPage(
+                                          storyTitle: it['name'] ?? 'Untitled',
+                                          subtitle: it['meta'] ?? 'Story',
+                                          chapters: 0,
+                                          words: 0,
+                                          media: const <StoryMediaItem>[],
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                },
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 leading: Container(
                                   width: 44,
