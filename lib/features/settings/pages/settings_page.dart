@@ -331,7 +331,7 @@ class SettingsPage extends StatelessWidget {
               _iosDivider(context),
               _iosNavRow(
                 context,
-                icon: Lucide.LayoutGrid,
+                icon: Lucide.Boxes,
                 label: 'Katha / Codex / Picme',
                 onTap: () {
                   Navigator.of(context).push(
