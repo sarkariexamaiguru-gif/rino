@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
@@ -170,6 +171,73 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
     _insert('[[img:${e.id}]]');
   }
 
+  /// Append a passage to this chapter.
+  ///
+  /// This is the bridge from the model to the manuscript: copy a reply, tap
+  /// this, and it lands at the end of the chapter as prose. Nothing is
+  /// reformatted and nothing is overwritten.
+  Future<void> _addProse() async {
+    String seed = '';
+    try {
+      final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+      seed = (data?.text ?? '').trim();
+    } catch (_) {}
+
+    final TextEditingController ctl = TextEditingController(text: seed);
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Add prose'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Paste the passage, or tap the model reply and copy it first.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: ctl,
+                autofocus: seed.isEmpty,
+                minLines: 6,
+                maxLines: 14,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'The passage to append',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Append')),
+        ],
+      ),
+    );
+    final String body = ctl.text.trim();
+    ctl.dispose();
+    if (ok != true || body.isEmpty) return;
+
+    final String pad = _ctl.text.isEmpty || _ctl.text.endsWith('\n') ? '' : '\n';
+    _ctl.text = '${_ctl.text}$pad$body\n';
+    await _save();
+    if (!mounted) return;
+    setState(() => _reading = true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Added to the chapter'), duration: Duration(seconds: 2)),
+    );
+  }
+
   void _addSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -218,6 +286,11 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
         title: Text('${widget.storyTitle} · Ch ${widget.chapter}',
             overflow: TextOverflow.ellipsis),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Add prose to this chapter',
+            onPressed: _addProse,
+            icon: const Icon(Icons.playlist_add),
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             child: SegmentedButton<bool>(
