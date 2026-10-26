@@ -89,8 +89,7 @@ class _CodexEditorPageState extends State<CodexEditorPage> {
               ? _previewBody(cs)
               : _mode == 2
                   ? _HtmlPreview(html: _ctl.text)
-                  : _editorBody()
-              : _editorBody(),
+                  : _editorBody(),
       floatingActionButton: _mode == 1
           ? FloatingActionButton(
               onPressed: () async {
