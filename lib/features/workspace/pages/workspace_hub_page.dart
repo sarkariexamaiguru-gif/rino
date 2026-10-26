@@ -116,6 +116,7 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
           'name': trimmed,
           'updated': _now(),
           'owner': 'mine',
+          'id': DateTime.now().microsecondsSinceEpoch.toString(),
           'tag': 'a',
           'meta': _section == 0 ? '0 words' : (_section == 1 ? 'code' : 'image project'),
         },
@@ -239,11 +240,11 @@ class _WorkspaceHubPageState extends State<WorkspaceHubPage> {
                                     Navigator.of(context).push(
                                       MaterialPageRoute<void>(
                                         builder: (_) => StoryMediaPage(
+                                          storyId: it['id'] ?? (it['name'] ?? 'untitled'),
                                           storyTitle: it['name'] ?? 'Untitled',
                                           subtitle: it['meta'] ?? 'Story',
-                                          chapters: 0,
                                           words: 0,
-                                          media: const <StoryMediaItem>[],
+                                          startChapter: 1,
                                         ),
                                       ),
                                     );
