@@ -8,6 +8,10 @@ import 'package:video_player/video_player.dart';
 
 import '../data/media_store.dart';
 import 'story_media_page.dart';
+import 'package:provider/provider.dart';
+import '../../../core/providers/settings_provider.dart';
+import '../../../core/services/api/chat_api_service.dart';
+
 
 /// The story surface for one chapter.
 ///
@@ -44,6 +48,7 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
   Map<String, MediaEntry> _media = <String, MediaEntry>{};
   final PageController _pager = PageController();
   int _pageIndex = 0;
+  bool _generating = false;
 
   String get _key => 'rino.storytext.${widget.storyId}.${widget.chapter}';
 
@@ -175,6 +180,99 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
     _insert('[[img:${e.id}]]');
   }
 
+  /// Ask the model to write the next passage and append it to this chapter.
+  ///
+  /// Uses the app's currently selected provider and model, so it behaves
+  /// exactly like the chat does — same endpoint, same key.
+  Future<void> _generate() async {
+    final SettingsProvider settings = context.read<SettingsProvider>();
+    final String? providerKey = settings.currentModelProvider;
+    final String? modelId = settings.currentModelId;
+
+    if (providerKey == null || modelId == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick a model first (Settings → Default model)')),
+      );
+      return;
+    }
+
+    final TextEditingController dir = TextEditingController();
+    final bool? go = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('Write with the model'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('What should happen next?',
+                  style: TextStyle(fontSize: 12)),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: dir,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'Continue the scene, or describe what happens',
+              ),
+            ),
+          ],
+        ),
+        actions: <Widget>[
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Write')),
+        ],
+      ),
+    );
+    final String direction = dir.text.trim();
+    dir.dispose();
+    if (go != true) return;
+
+    final String tail = _ctl.text.length > 3000
+        ? _ctl.text.substring(_ctl.text.length - 3000)
+        : _ctl.text;
+    final String prompt = 'You are continuing a work of fiction. Write the next '
+        'passage only - no headings, no commentary. Keep the voice and tense of '
+        'the existing text. About 250-400 words.\n\n'
+        '${tail.isEmpty ? "(The chapter is empty. Open the scene.)" : "Existing text:\n$tail"}'
+        '\n\nDirection: ${direction.isEmpty ? "Continue the story." : direction}';
+
+    setState(() => _generating = true);
+    try {
+      final String out = await ChatApiService.generateText(
+        config: settings.getProviderConfig(providerKey),
+        modelId: modelId,
+        prompt: prompt,
+      );
+      final String body = out.trim();
+      if (body.isEmpty) throw Exception('empty response');
+      final String pad = _ctl.text.isEmpty || _ctl.text.endsWith('\n') ? '' : '\n';
+      _ctl.text = '${_ctl.text}$pad$body\n';
+      await _save();
+      if (!mounted) return;
+      setState(() => _reading = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Written into the chapter')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Model failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
   /// Append a passage to this chapter.
   ///
   /// This is the bridge from the model to the manuscript: copy a reply, tap
@@ -290,6 +388,14 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
         title: Text('${widget.storyTitle} · Ch ${widget.chapter}',
             overflow: TextOverflow.ellipsis),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Generate with the model',
+            onPressed: _generating ? null : _generate,
+            icon: _generating
+                ? const SizedBox(
+                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_awesome),
+          ),
           IconButton(
             tooltip: 'Story media',
             onPressed: () {
