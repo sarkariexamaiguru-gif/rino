@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
 
 import '../data/media_store.dart';
+import 'story_media_page.dart';
 
 /// The story surface for one chapter.
 ///
@@ -41,6 +42,8 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
   bool _loading = true;
   late bool _reading = widget.startInRead;
   Map<String, MediaEntry> _media = <String, MediaEntry>{};
+  final PageController _pager = PageController();
+  int _pageIndex = 0;
 
   String get _key => 'rino.storytext.${widget.storyId}.${widget.chapter}';
 
@@ -54,6 +57,7 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
   void dispose() {
     _ctl.dispose();
     _focus.dispose();
+    _pager.dispose();
     super.dispose();
   }
 
@@ -287,6 +291,22 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
             overflow: TextOverflow.ellipsis),
         actions: <Widget>[
           IconButton(
+            tooltip: 'Story media',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => StoryMediaPage(
+                    storyId: widget.storyId,
+                    storyTitle: widget.storyTitle,
+                    subtitle: 'Chapter ${widget.chapter}',
+                    startChapter: widget.chapter,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.photo_library_outlined),
+          ),
+          IconButton(
             tooltip: 'Add prose to this chapter',
             onPressed: _addProse,
             icon: const Icon(Icons.playlist_add),
@@ -337,6 +357,106 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
     );
   }
 
+  /// Split the chapter into pages at [[page]] markers.
+  List<List<Widget>> _buildPages(ColorScheme cs) {
+    final List<String> lines = _ctl.text.split('\n');
+    final List<List<Widget>> pages = <List<Widget>>[];
+    List<Widget> cur = <Widget>[];
+    final List<String> buf = <String>[];
+
+    void flush() {
+      final String para = buf.join('\n').trim();
+      buf.clear();
+      if (para.isEmpty) return;
+      cur.add(Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Text(para, style: const TextStyle(fontSize: 17, height: 1.78)),
+      ));
+    }
+
+    for (final String line in lines) {
+      final String t = line.trim();
+      if (t.startsWith('[[page]]')) {
+        flush();
+        pages.add(cur);
+        cur = <Widget>[];
+        continue;
+      }
+      final RegExpMatch? m = RegExp(r'^\[\[img:([^\]]+)\]\]').firstMatch(t);
+      if (m != null) {
+        flush();
+        cur.add(Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: _inlineMedia(_media[m.group(1)], cs),
+        ));
+        continue;
+      }
+      buf.add(line);
+    }
+    flush();
+    pages.add(cur);
+    return pages;
+  }
+
+  void _openIndex(List<List<Widget>> pages) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (BuildContext ctx) {
+        final ColorScheme c = Theme.of(ctx).colorScheme;
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(ctx).size.height * 0.55,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Text('Pages',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: c.onSurface)),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: pages.length,
+                    itemBuilder: (BuildContext b, int i) {
+                      String label = 'Page ${i + 1}';
+                      for (final Widget w in pages[i]) {
+                        if (w is Padding && w.child is Text) {
+                          final String t = ((w.child as Text).data ?? '').trim();
+                          if (t.isNotEmpty) {
+                            label = t.length > 46 ? '${t.substring(0, 46)}...' : t;
+                            break;
+                          }
+                        }
+                      }
+                      return ListTile(
+                        leading: CircleAvatar(
+                          radius: 15,
+                          backgroundColor: i == _pageIndex
+                              ? c.primary.withValues(alpha: 0.25)
+                              : c.surfaceContainerHighest,
+                          child: Text('${i + 1}', style: TextStyle(fontSize: 12, color: c.onSurface)),
+                        ),
+                        title: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: i == _pageIndex ? Icon(Icons.check, size: 18, color: c.primary) : null,
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _pager.jumpToPage(i);
+                          setState(() => _pageIndex = i);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _reader(ColorScheme cs) {
     if (_ctl.text.trim().isEmpty) {
       return Center(
@@ -348,8 +468,7 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
               Icon(Icons.menu_book_outlined, size: 44, color: cs.onSurfaceVariant),
               const SizedBox(height: 12),
               Text('This chapter is empty',
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  style: TextStyle(fontWeight: FontWeight.w600, color: cs.onSurface)),
               const SizedBox(height: 6),
               Text('Switch to Write to begin.',
                   textAlign: TextAlign.center,
@@ -366,61 +485,61 @@ class _StoryEditorPageState extends State<StoryEditorPage> {
       );
     }
 
-    final List<String> lines = _ctl.text.split('\n');
-    final List<Widget> out = <Widget>[];
-    final List<String> buf = <String>[];
-    int page = 1;
+    final List<List<Widget>> pages = _buildPages(cs);
 
-    void flush() {
-      final String para = buf.join('\n').trim();
-      buf.clear();
-      if (para.isEmpty) return;
-      out.add(Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Text(para, style: const TextStyle(fontSize: 17, height: 1.78)),
-      ));
-    }
-
-    for (final String line in lines) {
-      final String t = line.trim();
-      if (t.startsWith('[[page]]')) {
-        flush();
-        out.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 18),
+    return Column(
+      children: <Widget>[
+        // page jump bar
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             children: <Widget>[
-              const Expanded(child: Divider()),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Text('Page $page',
-                    style:
-                        TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+              IconButton(
+                tooltip: 'Previous page',
+                onPressed: _pageIndex > 0
+                    ? () {
+                        _pager.jumpToPage(_pageIndex - 1);
+                        setState(() => _pageIndex = _pageIndex - 1);
+                      }
+                    : null,
+                icon: const Icon(Icons.chevron_left),
               ),
-              const Expanded(child: Divider()),
+              Text('Page ${_pageIndex + 1} of ${pages.length}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              IconButton(
+                tooltip: 'Next page',
+                onPressed: _pageIndex < pages.length - 1
+                    ? () {
+                        _pager.jumpToPage(_pageIndex + 1);
+                        setState(() => _pageIndex = _pageIndex + 1);
+                      }
+                    : null,
+                icon: const Icon(Icons.chevron_right),
+              ),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () => _openIndex(pages),
+                icon: const Icon(Icons.list, size: 18),
+                label: const Text('Index'),
+              ),
             ],
           ),
-        ));
-        page++;
-        continue;
-      }
-      final RegExpMatch? m = RegExp(r'^\[\[img:([^\]]+)\]\]').firstMatch(t);
-      if (m != null) {
-        flush();
-        out.add(Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: _inlineMedia(_media[m.group(1)], cs),
-        ));
-        continue;
-      }
-      buf.add(line);
-    }
-    flush();
-
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      children: out,
+        ),
+        Expanded(
+          child: PageView.builder(
+            controller: _pager,
+            itemCount: pages.length,
+            onPageChanged: (int i) => setState(() => _pageIndex = i),
+            itemBuilder: (BuildContext ctx, int i) => ListView(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              children: pages[i],
+            ),
+          ),
+        ),
+      ],
     );
   }
+
 
   Widget _inlineMedia(MediaEntry? e, ColorScheme cs) {
     if (e == null) {
